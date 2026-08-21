@@ -1,21 +1,25 @@
 MEMORY
 {
-  FLASH : ORIGIN = 0x08000000, LENGTH = 1024K
-  RAM   : ORIGIN = 0x20000000, LENGTH = 128K /* Belw this is the vector table */
+  RAM : ORIGIN = 0x40000000, LENGTH = 128M
 }
 
-ENTRY(Reset);
+ENTRY(_start);
 
 SECTIONS
 {
-  .vector_table :
-  {
-    LONG(ORIGIN(RAM) + LENGTH(RAM)); /* SP */
-    LONG(Reset); /* Reset */
-  } > FLASH
+  . = ORIGIN(RAM);
 
   .text :
   {
+    *(.text._start)
     *(.text .text.*);
-  } > FLASH
+  } > RAM
+
+  .rodata : { *(.rodata .rodata.*); } > RAM
+  .data : { *(.data .data.*); } > RAM
+  .bss : { *(.bss .bss.*); } > RAM
+
+  . = ALIGN(16);
+  . = . + 0x4000; /* stack */
+  stack_top = .;
 }

@@ -1,14 +1,16 @@
 #![no_std]
 #![no_main]
 
+mod driver;
+
 use core::panic::PanicInfo;
 
-/// Instead of a standard boootloader, ARM Cortex-M chips load the vector table into memory
-/// and search for the entry point
-/// By cnoventiono, this entry poinot is called `Reset`
-/// (note difference fromo _start on typical x86_64 targets)
+use driver::serial::*;
+
 #[unsafe(no_mangle)]
-pub extern "C" fn Reset() -> ! {
+pub extern "C" fn main() -> ! {
+    let console = Serial::new(UART0_DR, UART0_FR, UART_FR_TXFF);
+    console.print("hello gee");
     loop {}
 }
 
