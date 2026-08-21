@@ -5,7 +5,7 @@ mod driver;
 mod helpers;
 mod interrupts;
 
-use core::panic::PanicInfo;
+use panic_halt as _;
 
 use driver::gic;
 use driver::serial::{Serial, UART_GIC};
@@ -24,9 +24,4 @@ pub extern "C" fn main() -> ! {
             console.wb(b);
         }
     }
-}
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
 }
