@@ -1,0 +1,1 @@
+/Users/vinayak/Developer/vinayakv.dev/src/content/posts/nnos.md
