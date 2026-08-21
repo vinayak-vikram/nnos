@@ -7,5 +7,5 @@ edition = "2024"
 cortex-m = { version = "0.7.9", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.6"
 rtic = { version = "2.3.1", features = ["thumbv7-backend"] }
-lm3s6965 = "0.2.0"
 cortex-m-semihosting = "0.6.0"
+stm32f4 = { version = "0.16.0", features = ["stm32f405", "rt"] }

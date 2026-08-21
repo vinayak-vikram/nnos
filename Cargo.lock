@@ -117,16 +117,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lm3s6965"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13d7ed5360fee8fd434cf7995ef1d7ad42697abb538e34383a39da8df5495446"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
-]
-
-[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -148,8 +138,8 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-semihosting",
- "lm3s6965",
  "rtic",
+ "stm32f4",
 ]
 
 [[package]]
@@ -230,6 +220,18 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
+
+[[package]]
+name = "stm32f4"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c41bd8922df364cb7054cae71a95dcbb32cffd25b5c0f9c00272ef8c82279a65"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "critical-section",
+ "vcell",
+]
 
 [[package]]
 name = "syn"

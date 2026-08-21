@@ -4,7 +4,7 @@
 use core::panic::PanicInfo;
 use cortex_m_semihosting::{debug, hprintln};
 
-#[rtic::app(device = lm3s6965)]
+#[rtic::app(device = stm32f4::stm32f405)]
 mod app {
     use super::*;
 
