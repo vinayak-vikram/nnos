@@ -12,6 +12,8 @@ SECTIONS
   .text :
   {
     *(.text._start)
+    . = ALIGN(0x800);
+    *(.text.vectors)
     *(.text .text.*);
   } > RAM
 

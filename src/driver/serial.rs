@@ -1,18 +1,46 @@
+use crate::helpers::ringbuf::RingBuffer;
 use core::ptr::{read_volatile, write_volatile};
 
+/// For transmit
+/// Data register
 pub const UART0_DR: *mut u32 = 0x0900_0000 as *mut u32;
+/// Flag register
 pub const UART0_FR: *mut u32 = 0x0900_0018 as *mut u32;
+/// Bit that indicates if TX buf is full or not
 pub const UART_FR_TXFF: u32 = 1 << 5;
+/// For recv
+/// Interrupt mask register
+const UART0_IMSC: *mut u32 = (0x0900_0038) as *mut u32;
+/// Interrupt clear register
+const UART0_ICR: *mut u32 = (0x0900_0044) as *mut u32;
+/// UART interrupt GIC id
+pub const UART_GIC: u8 = 33;
+
+static RX: RingBuffer = RingBuffer::new();
 
 pub struct Serial {
     dr: *mut u32,
     fr: *const u32,
     fr_txff: u32,
+    imscr: *mut u32,
+    icr: *mut u32,
+    rx: &'static RingBuffer,
 }
 
 impl Serial {
-    pub fn new(dr: *mut u32, fr: *const u32, fr_txff: u32) -> Self {
-        Self { dr, fr, fr_txff }
+    pub fn new() -> Self {
+        unsafe {
+            let current_mask = read_volatile(UART0_IMSC);
+            write_volatile(UART0_IMSC, current_mask | (1 << 4));
+        }
+        Self {
+            dr: UART0_DR,
+            fr: UART0_FR,
+            fr_txff: UART_FR_TXFF,
+            imscr: UART0_IMSC,
+            icr: UART0_ICR,
+            rx: &RX,
+        }
     }
     pub fn wb(&self, b: u8) {
         unsafe {
@@ -24,5 +52,17 @@ impl Serial {
         for b in s.bytes() {
             self.wb(b);
         }
+    }
+    pub fn rb(&self) -> Option<u8> {
+        self.rx.pop()
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn handle_uart_irq() {
+    unsafe {
+        let received_byte = (read_volatile(UART0_DR) & 0xFF) as u8;
+        RX.push(received_byte);
+        write_volatile(UART0_ICR, 1 << 4);
     }
 }

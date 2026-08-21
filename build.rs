@@ -8,15 +8,18 @@ use std::process::Command;
 
 fn main() {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let boot_o = out_dir.join("boot.o");
 
-    let status = Command::new("clang")
-        .args(["-target", "aarch64-unknown-none", "-c", "src/boot.s", "-o"])
-        .arg(&boot_o)
-        .status()
-        .expect("error when assembling bootloadeer");
-    assert!(status.success(), "did noto assemble botloader, exiting");
+    for src in ["src/boot.s", "src/exceptions.s"] {
+        let obj = out_dir.join(PathBuf::from(src).with_extension("o").file_name().unwrap());
 
-    println!("cargo:rustc-link-arg={}", boot_o.display());
-    println!("cargo:rerun-if-changed=src/boot.s");
+        let status = Command::new("clang")
+            .args(["-target", "aarch64-unknown-none", "-c", src, "-o"])
+            .arg(&obj)
+            .status()
+            .expect("error when assembling");
+        assert!(status.success(), "did noto assemble successfully, exiting");
+
+        println!("cargo:rustc-link-arg={}", obj.display());
+        println!("cargo:rerun-if-changed={}", src);
+    }
 }
