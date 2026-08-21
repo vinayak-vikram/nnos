@@ -1,29 +1,18 @@
-#![no_main]
 #![no_std]
+#![no_main]
 
 use core::panic::PanicInfo;
-use cortex_m_semihosting::{debug, hprintln};
 
-#[rtic::app(device = stm32f4::stm32f405)]
-mod app {
-    use super::*;
-
-    #[shared]
-    struct Shared {}
-
-    #[local]
-    struct Local {}
-
-    #[init]
-    fn init(cx: init::Context) -> (Shared, Local) {
-        hprintln!("hello gee");
-        debug::exit(debug::EXIT_SUCCESS);
-        (Shared {}, Local {})
-    }
+/// Instead of a standard boootloader, ARM Cortex-M chips load the vector table into memory
+/// and search for the entry point
+/// By cnoventiono, this entry poinot is called `Reset`
+/// (note difference fromo _start on typical x86_64 targets)
+#[unsafe(no_mangle)]
+pub extern "C" fn Reset() -> ! {
+    loop {}
 }
 
 #[panic_handler]
-fn panic_handler(_: &PanicInfo) -> ! {
-    debug::exit(debug::EXIT_FAILURE);
+fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
