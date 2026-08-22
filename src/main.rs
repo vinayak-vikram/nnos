@@ -29,14 +29,14 @@ pub extern "C" fn main() -> ! {
         gic::enable_interrupt(UART_GIC);
         interrupts::unmask_irqs();
     }
-    console.print("booted\n");
-    console.print("interrupt vector table initialized\n");
-    console.print("serial console initialized\n");
-    console.print("heap allocator initalized\n");
+    console.print("booted\r\n");
+    console.print("interrupt vector table initialized\r\n");
+    console.print("serial console initialized\r\n");
+    console.print("heap allocator initalized\r\n");
     let mut rt = Executor::new();
-    console.print("async executor initialized\n");
-    console.print("scheduling tasks...\n");
-    console.print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\n");
+    console.print("async executor initialized\r\n");
+    console.print("scheduling tasks...\r\n");
+    console.print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel init complete\r\n");
     rt.spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
     rt.run();
 }
