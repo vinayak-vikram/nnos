@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 panic-halt = "1.0.0"
+critical-section = { version = "1.2.0", features = ["restore-state-u64"] }
+embedded-alloc = "0.7.0"
 
 [profile.dev]
 panic = "abort"
