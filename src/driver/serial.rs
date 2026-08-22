@@ -1,3 +1,4 @@
+use crate::asyncrt::GlobalWaker;
 use crate::helpers::ringbuf::RingBuffer;
 use core::future::poll_fn;
 use core::ptr::{read_volatile, write_volatile};
@@ -19,6 +20,7 @@ const UART0_ICR: *mut u32 = (0x0900_0044) as *mut u32;
 pub const UART_GIC: u8 = 33;
 
 static RX: RingBuffer = RingBuffer::new();
+static RX_WAKER: GlobalWaker = GlobalWaker::new();
 
 pub struct Serial {
     dr: *mut u32,
@@ -67,12 +69,16 @@ pub unsafe extern "C" fn handle_uart_irq() {
         RX.push(received_byte);
         write_volatile(UART0_ICR, 1 << 4);
     }
+    RX_WAKER.wake();
 }
 
 async fn poll_rb(serial: &Serial) -> u8 {
-    poll_fn(|_| match serial.rb() {
-        Some(b) => Poll::Ready(b),
-        None => Poll::Pending,
+    poll_fn(|cx| {
+        RX_WAKER.arm(cx);
+        match serial.rb() {
+            Some(b) => Poll::Ready(b),
+            None => Poll::Pending,
+        }
     })
     .await
 }

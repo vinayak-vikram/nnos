@@ -39,5 +39,4 @@ pub extern "C" fn main() -> ! {
     console.print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\n");
     rt.spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
     rt.run();
-    loop {} // make compiler happy
 }
