@@ -1,5 +1,7 @@
 use crate::helpers::ringbuf::RingBuffer;
+use core::future::poll_fn;
 use core::ptr::{read_volatile, write_volatile};
+use core::task::Poll;
 
 /// For transmit
 /// Data register
@@ -64,5 +66,20 @@ pub unsafe extern "C" fn handle_uart_irq() {
         let received_byte = (read_volatile(UART0_DR) & 0xFF) as u8;
         RX.push(received_byte);
         write_volatile(UART0_ICR, 1 << 4);
+    }
+}
+
+async fn poll_rb(serial: &Serial) -> u8 {
+    poll_fn(|_| match serial.rb() {
+        Some(b) => Poll::Ready(b),
+        None => Poll::Pending,
+    })
+    .await
+}
+
+pub async fn serial_task(serial: Serial) {
+    loop {
+        let b = poll_rb(&serial).await;
+        serial.wb(b);
     }
 }

@@ -7,6 +7,7 @@ edition = "2024"
 panic-halt = "1.0.0"
 critical-section = { version = "1.2.0", features = ["restore-state-u64"] }
 embedded-alloc = "0.7.0"
+futures = { version = "0.3.34", default-features = false, features = ["alloc"] }
 
 [profile.dev]
 panic = "abort"

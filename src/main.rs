@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+mod asyncrt;
 mod driver;
 mod helpers;
 mod interrupts;
@@ -10,8 +11,9 @@ mod interrupts;
 use embedded_alloc::LlffHeap as Heap;
 use panic_halt as _;
 
+use asyncrt::Executor;
 use driver::gic;
-use driver::serial::{Serial, UART_GIC};
+use driver::serial::{Serial, UART_GIC, serial_task};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -27,10 +29,15 @@ pub extern "C" fn main() -> ! {
         gic::enable_interrupt(UART_GIC);
         interrupts::unmask_irqs();
     }
-    console.print("hello gee\n");
-    loop {
-        if let Some(b) = console.rb() {
-            console.wb(b);
-        }
-    }
+    console.print("booted\n");
+    console.print("interrupt vector table initialized\n");
+    console.print("serial console initialized\n");
+    console.print("heap allocator initalized\n");
+    let mut rt = Executor::new();
+    console.print("async executor initialized\n");
+    console.print("scheduling tasks...\n");
+    console.print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\n");
+    rt.spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
+    rt.run();
+    loop {} // make compiler happy
 }
