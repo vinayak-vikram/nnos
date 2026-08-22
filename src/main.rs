@@ -36,7 +36,8 @@ pub extern "C" fn main() -> ! {
     let mut rt = Executor::new();
     console.print("async executor initialized\r\n");
     console.print("scheduling tasks...\r\n");
-    console.print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel init complete\r\n");
+    console
+        .print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\r\n");
     rt.spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
     rt.run();
 }

@@ -1,9 +1,9 @@
 use super::executor::wake_task;
 use super::task::TaskInner;
+use crate::helpers::Mutex;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::task::{Context, RawWaker, RawWakerVTable, Waker};
-use critical_section::Mutex;
 
 static VTABLE: RawWakerVTable = RawWakerVTable::new(
     // Clone
@@ -33,16 +33,16 @@ pub fn task_waker(task: Rc<RefCell<TaskInner>>) -> Waker {
     unsafe { Waker::from_raw(RawWaker::new(raw, &VTABLE)) }
 }
 
-pub struct GlobalWaker(Mutex<RefCell<Option<Waker>>>);
+pub struct GlobalWaker(Mutex<Option<Waker>>);
 impl GlobalWaker {
     pub const fn new() -> GlobalWaker {
-        GlobalWaker(Mutex::new(RefCell::new(None)))
+        GlobalWaker(Mutex::new(None))
     }
     pub fn arm(&self, cx: &mut Context<'_>) {
-        critical_section::with(|cs| *self.0.borrow(cs).borrow_mut() = Some(cx.waker().clone()));
+        self.0.with(|w| *w = Some(cx.waker().clone()));
     }
     pub fn wake(&self) {
-        let waker = critical_section::with(|cs| self.0.borrow(cs).borrow_mut().take());
+        let waker = self.0.with(|w| w.take());
         if let Some(w) = waker {
             w.wake();
         }
