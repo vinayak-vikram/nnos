@@ -1,5 +1,6 @@
-use crate::asyncrt::GlobalWaker;
+use crate::asyncrt::{GlobalWaker, spawn};
 use crate::helpers::ringbuf::RingBuffer;
+use crate::kernel::sh::{CommandBuffer, shell_task};
 use core::future::poll_fn;
 use core::ptr::{read_volatile, write_volatile};
 use core::task::Poll;
@@ -22,6 +23,7 @@ pub const UART_GIC: u8 = 33;
 static RX: RingBuffer = RingBuffer::new();
 static RX_WAKER: GlobalWaker = GlobalWaker::new();
 
+#[derive(Clone, Copy)]
 pub struct Serial {
     dr: *mut u32,
     fr: *const u32,
@@ -57,6 +59,11 @@ impl Serial {
             self.wb(b);
         }
     }
+    pub fn printb(&self, s: &[u8; 256], len: usize) {
+        for &b in &s[..len] {
+            self.wb(b);
+        }
+    }
     pub fn rb(&self) -> Option<u8> {
         self.rx.pop()
     }
@@ -84,8 +91,23 @@ async fn poll_rb(serial: &Serial) -> u8 {
 }
 
 pub async fn serial_task(serial: Serial) {
+    let mut cmd = CommandBuffer {
+        buf: [0; 256],
+        len: 0,
+    };
     loop {
         let b = poll_rb(&serial).await;
         serial.wb(b);
+        match b {
+            b'\r' | b'\n' => {
+                spawn(shell_task(cmd, serial));
+                cmd.len = 0;
+            }
+            _ if cmd.len < cmd.buf.len() => {
+                cmd.buf[cmd.len] = b;
+                cmd.len += 1;
+            }
+            _ => {}
+        }
     }
 }

@@ -14,15 +14,16 @@ pub(crate) fn wake_task(task: Rc<RefCell<TaskInner>>) {
     TASKS.with(|tasks| tasks.push_back(Task(task)));
 }
 
+/// Spawn a future onto the ready queue
+pub fn spawn<F: Future<Output = ()> + 'static>(future: F) {
+    TASKS.with(|tasks| tasks.push_back(Task::new(Box::pin(future))));
+}
+
 pub struct Executor {}
 
 impl Executor {
     pub fn new() -> Executor {
         Executor {}
-    }
-    /// Spawn a future onto the executoor instance.
-    pub fn spawn<F: Future<Output = ()> + 'static>(&mut self, future: F) {
-        TASKS.with(|tasks| tasks.push_back(Task::new(Box::pin(future))));
     }
     /// Run the async executor
     ///

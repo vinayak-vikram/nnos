@@ -7,11 +7,12 @@ mod asyncrt;
 mod driver;
 mod helpers;
 mod interrupts;
+mod kernel;
 
 use embedded_alloc::LlffHeap as Heap;
 use panic_halt as _;
 
-use asyncrt::Executor;
+use asyncrt::{Executor, spawn};
 use driver::gic;
 use driver::serial::{Serial, UART_GIC, serial_task};
 
@@ -38,6 +39,6 @@ pub extern "C" fn main() -> ! {
     console.print("scheduling tasks...\r\n");
     console
         .print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\r\n");
-    rt.spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
+    spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
     rt.run();
 }
