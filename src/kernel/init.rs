@@ -2,27 +2,28 @@ use alloc::boxed::Box;
 use ext4plus::Ext4;
 
 use crate::asyncrt::spawn;
-use crate::driver::serial::{Serial, serial_task};
+use crate::driver::serial::CONSOLE;
 use crate::fs::dtb;
+use crate::helpers::stdio::{print, println};
+use crate::kernel::sh::shell_task;
 
-pub async fn init_task(console: Serial, dtb_ptr: *const u8) {
-    console.print("async executor initialized\r\n");
+pub async fn init_task(dtb_ptr: *const u8) {
+    println("async executor initialized");
     let Some(dtbt) = (unsafe { dtb::get_dtb(dtb_ptr) }) else {
-        console.print("dtb loading failed\r\n");
+        println("dtb loading failed");
         panic!();
     };
-    let rd = dtb::locate_initrd(dtbt).expect("initrd not found\r\n");
-    console.print("initrd located at 0x");
-    console.printh(rd.ptr as u64);
-    console.print(" (0x");
-    console.printh(rd.len as u64);
-    console.print(" bytes)\r\n");
+    let rd = dtb::locate_initrd(dtbt).expect("initrd not found");
+    print("initrd located at 0x");
+    CONSOLE.printh(rd.ptr as u64);
+    print(" (0x");
+    CONSOLE.printh(rd.len as u64);
+    println(" bytes)");
     let Ok(fs) = Ext4::load_with_writer(Box::new(rd), Some(Box::new(rd))).await else {
-        console.print("fs loading failed\r\n");
+        println("fs loading failed");
         panic!();
     };
-    console.print("successfully loaoded ext4 filesystem\r\n");
-    console
-        .print("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\r\n");
-    spawn(serial_task(console)); // we dont need it outside of this task, if i do everything properly
+    println("successfully loaoded ext4 filesystem");
+    println("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\r\n");
+    spawn(shell_task()); // we dont need it outside of this task, if i do everything properly
 }

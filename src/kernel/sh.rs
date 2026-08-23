@@ -1,4 +1,4 @@
-use crate::driver::serial::Serial;
+use crate::helpers::stdio::*;
 
 #[derive(Clone, Copy)]
 pub struct CommandBuffer {
@@ -6,8 +6,11 @@ pub struct CommandBuffer {
     pub len: usize,
 }
 
-pub async fn shell_task(cmd: CommandBuffer, console: Serial) {
-    console.print("\r\ngot: ");
-    console.printb(&cmd.buf, cmd.len);
-    console.print("\r\n");
+pub async fn shell_task() {
+    loop {
+        print("> ");
+        let cmd = readln().await;
+        print("\r\ngot: ");
+        printb(&cmd);
+    }
 }

@@ -15,7 +15,8 @@ use panic_halt as _;
 
 use asyncrt::{Executor, spawn};
 use driver::gic;
-use driver::serial::{Serial, UART_GIC};
+use driver::serial::{CONSOLE, UART_GIC};
+use helpers::stdio::println;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -25,17 +26,17 @@ pub extern "C" fn main(dtb_ptr: *const u8) -> ! {
     unsafe {
         embedded_alloc::init!(HEAP, 1024 * 1024);
     }
-    let console = Serial::new();
+    CONSOLE.enable_rx_irq();
     unsafe {
         gic::init();
         gic::enable_interrupt(UART_GIC);
         interrupts::unmask_irqs();
     }
-    console.print("booted\r\n");
-    console.print("interrupt vector table initialized\r\n");
-    console.print("heap allocator initalized\r\n");
-    console.print("serial console initialized\r\n");
+    println("booted");
+    println("interrupt vector table initialized");
+    println("heap allocator initalized");
+    println("serial console initialized");
     let mut rt = Executor::new();
-    spawn(kernel::init_task(console, dtb_ptr));
+    spawn(kernel::init_task(dtb_ptr));
     rt.run();
 }

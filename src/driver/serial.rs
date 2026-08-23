@@ -27,6 +27,8 @@ const UART_INT_RX: u32 = (1 << 4) | (1 << 6);
 static RX: RingBuffer = RingBuffer::new();
 static RX_WAKER: GlobalWaker = GlobalWaker::new();
 
+pub static CONSOLE: Serial = Serial::new();
+
 #[derive(Clone, Copy)]
 pub struct Serial {
     dr: *mut u32,
@@ -37,12 +39,10 @@ pub struct Serial {
     rx: &'static RingBuffer,
 }
 
+unsafe impl Sync for Serial {}
+
 impl Serial {
-    pub fn new() -> Self {
-        unsafe {
-            let current_mask = read_volatile(UART0_IMSC);
-            write_volatile(UART0_IMSC, current_mask | UART_INT_RX);
-        }
+    pub const fn new() -> Self {
         Self {
             dr: UART0_DR,
             fr: UART0_FR,
@@ -50,6 +50,12 @@ impl Serial {
             imscr: UART0_IMSC,
             icr: UART0_ICR,
             rx: &RX,
+        }
+    }
+    pub fn enable_rx_irq(&self) {
+        unsafe {
+            let current_mask = read_volatile(self.imscr);
+            write_volatile(self.imscr, current_mask | UART_INT_RX);
         }
     }
     pub fn wb(&self, b: u8) {
@@ -101,35 +107,13 @@ pub unsafe extern "C" fn handle_uart_irq() {
     RX_WAKER.wake();
 }
 
-async fn poll_rb(serial: &Serial) -> u8 {
+pub async fn poll_rb() -> u8 {
     poll_fn(|cx| {
         RX_WAKER.arm(cx);
-        match serial.rb() {
+        match CONSOLE.rb() {
             Some(b) => Poll::Ready(b),
             None => Poll::Pending,
         }
     })
     .await
-}
-
-pub async fn serial_task(serial: Serial) {
-    let mut cmd = CommandBuffer {
-        buf: [0; 256],
-        len: 0,
-    };
-    loop {
-        let b = poll_rb(&serial).await;
-        serial.wb(b);
-        match b {
-            b'\r' | b'\n' => {
-                spawn(shell_task(cmd, serial));
-                cmd.len = 0;
-            }
-            _ if cmd.len < cmd.buf.len() => {
-                cmd.buf[cmd.len] = b;
-                cmd.len += 1;
-            }
-            _ => {}
-        }
-    }
 }
