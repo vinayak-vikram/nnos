@@ -64,6 +64,22 @@ impl Serial {
             self.wb(b);
         }
     }
+    pub fn printh(&self, mut v: u64) {
+        let mut buf: [u8; 16] = [0; 16];
+        let mut i = 16;
+        while i > 0 {
+            i -= 1;
+            buf[i] = b"0123456789abcdef"[(v & 0xf) as usize];
+            v >>= 4;
+            if v == 0 {
+                break;
+            }
+        }
+        for &b in &buf[i..] {
+            self.wb(b);
+        }
+    }
+
     pub fn rb(&self) -> Option<u8> {
         self.rx.pop()
     }
