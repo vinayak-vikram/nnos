@@ -12,6 +12,8 @@ pub const UART0_DR: *mut u32 = 0x0900_0000 as *mut u32;
 pub const UART0_FR: *mut u32 = 0x0900_0018 as *mut u32;
 /// Bit that indicates if TX buf is full or not
 pub const UART_FR_TXFF: u32 = 1 << 5;
+/// Bit that indicates if RX buf is empty or not
+pub const UART_FR_RXFE: u32 = 1 << 4;
 /// For recv
 /// Interrupt mask register
 const UART0_IMSC: *mut u32 = (0x0900_0038) as *mut u32;
@@ -19,6 +21,8 @@ const UART0_IMSC: *mut u32 = (0x0900_0038) as *mut u32;
 const UART0_ICR: *mut u32 = (0x0900_0044) as *mut u32;
 /// UART interrupt GIC id
 pub const UART_GIC: u8 = 33;
+/// RX and RX-timeout interrupt bits
+const UART_INT_RX: u32 = (1 << 4) | (1 << 6);
 
 static RX: RingBuffer = RingBuffer::new();
 static RX_WAKER: GlobalWaker = GlobalWaker::new();
@@ -37,7 +41,7 @@ impl Serial {
     pub fn new() -> Self {
         unsafe {
             let current_mask = read_volatile(UART0_IMSC);
-            write_volatile(UART0_IMSC, current_mask | (1 << 4));
+            write_volatile(UART0_IMSC, current_mask | UART_INT_RX);
         }
         Self {
             dr: UART0_DR,
@@ -88,9 +92,11 @@ impl Serial {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn handle_uart_irq() {
     unsafe {
-        let received_byte = (read_volatile(UART0_DR) & 0xFF) as u8;
-        RX.push(received_byte);
-        write_volatile(UART0_ICR, 1 << 4);
+        // clear before draining so bytes landing mid-drain re-raise the interrupt
+        write_volatile(UART0_ICR, UART_INT_RX);
+        while read_volatile(UART0_FR) & UART_FR_RXFE == 0 {
+            RX.push((read_volatile(UART0_DR) & 0xFF) as u8);
+        }
     }
     RX_WAKER.wake();
 }
