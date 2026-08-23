@@ -1,3 +1,4 @@
+#[derive(Clone, Copy)]
 pub struct Ramdisk {
     pub ptr: *mut u8,
     pub len: usize,

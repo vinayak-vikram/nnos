@@ -17,7 +17,7 @@ pub async fn init_task(console: Serial, dtb_ptr: *const u8) {
     console.print(" (0x");
     console.printh(rd.len as u64);
     console.print(" bytes)\r\n");
-    let Ok(fs) = Ext4::load(Box::new(rd)).await else {
+    let Ok(fs) = Ext4::load_with_writer(Box::new(rd), Some(Box::new(rd))).await else {
         console.print("fs loading failed\r\n");
         panic!();
     };
