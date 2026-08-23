@@ -1,3 +1,4 @@
+use super::ramdisk::Ramdisk;
 use fdt::Fdt;
 
 const FDT_MAGIC: u32 = 0xD00D_FEED;
@@ -11,11 +12,6 @@ pub unsafe fn get_dtb(raw_ptr: *const u8) -> Option<&'static [u8]> {
     Some(core::slice::from_raw_parts(raw_ptr, len))
 }
 
-pub struct Ramdisk {
-    pub start: usize,
-    pub end: usize,
-}
-
 pub fn locate_initrd(dtb_data: &[u8]) -> Option<Ramdisk> {
     let fdt = Fdt::new(dtb_data).ok()?;
     let chosen_node = fdt.find_node("/chosen")?;
@@ -24,7 +20,7 @@ pub fn locate_initrd(dtb_data: &[u8]) -> Option<Ramdisk> {
     let initrd_end = chosen_node.property("linux,initrd-end")?.as_usize()?;
 
     Some(Ramdisk {
-        start: initrd_start,
-        end: initrd_end,
+        ptr: initrd_start as *mut u8,
+        len: initrd_end - initrd_start,
     })
 }

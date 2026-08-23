@@ -9,6 +9,8 @@ critical-section = { version = "1.2.0", features = ["restore-state-u64"] }
 embedded-alloc = "0.7.0"
 futures = { version = "0.3.34", default-features = false, features = ["alloc"] }
 fdt = "0.1.5"
+ext4plus = { version = "0.1.0-rc.2", default-features = false }
+async-trait = "0.1"
 
 [profile.dev]
 panic = "abort"
