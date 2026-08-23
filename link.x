@@ -23,6 +23,6 @@ SECTIONS
   .bss : { *(.bss .bss.*); } > RAM
 
   . = ALIGN(16);
-  . = . + 0x4000; /* stack */
+  . = . + 0x40000; /* stack */
   stack_top = .;
 }

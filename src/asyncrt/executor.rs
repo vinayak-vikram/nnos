@@ -39,11 +39,11 @@ impl Executor {
                 let _ = task.0.borrow_mut().as_mut().poll(&mut cx);
             }
             // TODO: figure out tasks that dont have interrupt on ready to poll... idk
-            // TASKS.with(|tasks| {
-            //     if tasks.is_empty() {
-            //         unsafe { core::arch::asm!("wfi", options(nomem, nostack)) };
-            //     }
-            // });
+            TASKS.with(|tasks| {
+                if tasks.is_empty() {
+                    unsafe { core::arch::asm!("wfi", options(nomem, nostack)) };
+                }
+            });
         }
     }
 }

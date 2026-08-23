@@ -23,7 +23,7 @@ static HEAP: Heap = Heap::empty();
 #[unsafe(no_mangle)]
 pub extern "C" fn main(dtb_ptr: *const u8) -> ! {
     unsafe {
-        embedded_alloc::init!(HEAP, 4096);
+        embedded_alloc::init!(HEAP, 1024 * 1024);
     }
     let console = Serial::new();
     unsafe {
