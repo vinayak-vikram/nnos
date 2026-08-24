@@ -2,7 +2,6 @@ use alloc::vec::Vec;
 
 use crate::asyncrt::{GlobalWaker, spawn};
 use crate::helpers::ringbuf::RingBuffer;
-use crate::kernel::sh::{CommandBuffer, shell_task};
 use core::future::poll_fn;
 use core::ptr::{read_volatile, write_volatile};
 use core::task::Poll;

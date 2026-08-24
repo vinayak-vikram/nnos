@@ -9,6 +9,7 @@ mod fs;
 mod helpers;
 mod interrupts;
 mod kernel;
+mod shell;
 
 use embedded_alloc::LlffHeap as Heap;
 use panic_halt as _;

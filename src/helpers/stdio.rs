@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use crate::driver::serial::{CONSOLE, poll_rb};
-use crate::kernel::sh::CommandBuffer;
+use crate::shell::CommandBuffer;
 
 #[inline(always)]
 pub fn print(s: &str) {
