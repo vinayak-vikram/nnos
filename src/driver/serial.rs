@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use crate::asyncrt::{GlobalWaker, spawn};
 use crate::helpers::ringbuf::RingBuffer;
 use crate::kernel::sh::{CommandBuffer, shell_task};
@@ -71,6 +73,11 @@ impl Serial {
     }
     pub fn printb(&self, s: &[u8; 256], len: usize) {
         for &b in &s[..len] {
+            self.wb(b);
+        }
+    }
+    pub fn printv(&self, s: &Vec<u8>) {
+        for &b in s {
             self.wb(b);
         }
     }

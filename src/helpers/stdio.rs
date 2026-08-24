@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use crate::driver::serial::{CONSOLE, poll_rb};
 use crate::kernel::sh::CommandBuffer;
 
@@ -15,6 +17,11 @@ pub fn println(s: &str) {
 #[inline(always)]
 pub fn printb(cmd: &CommandBuffer) {
     CONSOLE.printb(&cmd.buf, cmd.len);
+}
+
+#[inline(always)]
+pub fn printv(v: &Vec<u8>) {
+    CONSOLE.printv(v);
 }
 
 pub async fn readln() -> CommandBuffer {
