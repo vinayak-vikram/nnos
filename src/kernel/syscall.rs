@@ -12,7 +12,7 @@ const RS_REG: u64 = 0x8400_0009;
 pub enum Syscall<'a> {
     Print { message: &'a str },
     Read { path: &'a str },
-    // Write { path: &'a str, data: Vec<u8> }, // TODO: diffs? :)
+    Write { path: &'a str, data: Vec<u8> }, // TODO: diffs? :)
     Create { path: &'a str },
     Delete { path: &'a str },
     List { path: &'a str },
@@ -31,7 +31,7 @@ impl<'a> Intent<'a> {
         let th: f64 = match self.sc {
             Syscall::Print { .. } => 0.5,
             Syscall::Read { .. } => 0.6,
-            // Syscall::Write { .. } => 0.8,
+            Syscall::Write { .. } => 0.8,
             Syscall::Create { .. } => 0.7,
             Syscall::Delete { .. } => 0.95,
             Syscall::List { .. } => 0.6,
@@ -56,7 +56,7 @@ pub async fn exec_syscall(sc: Syscall<'_>, fs: &Ext4) -> Result<(), Ext4Error> {
             printv(&fs.read(path).await?);
             Ok(())
         }
-        // Syscall::Write { path, data } => (),
+        Syscall::Write { path, data } => write(fs, path, &data).await,
         Syscall::Create { path } => touch(fs, path).await,
         Syscall::Delete { path } => delete(fs, path).await,
         Syscall::List { path } => listdir(fs, path).await,
@@ -89,6 +89,28 @@ async fn touch(fs: &Ext4, path: &str) -> Result<(), Ext4Error> {
         })
         .await?;
     dir.link(name, &mut inode).await
+}
+
+async fn write(fs: &Ext4, path: &str, data: &[u8]) -> Result<(), Ext4Error> {
+    let mut file = match fs.open(path).await {
+        Ok(file) => file,
+        Err(Ext4Error::NotFound) => {
+            touch(fs, path).await?;
+            fs.open(path).await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    let mut written = 0;
+    while written < data.len() {
+        let n = file.write_bytes(&data[written..]).await?;
+        if n == 0 {
+            return Err(Ext4Error::NoSpace);
+        }
+        written += n;
+    }
+
+    file.truncate(written as u64).await
 }
 
 async fn delete(fs: &Ext4, path: &str) -> Result<(), Ext4Error> {
