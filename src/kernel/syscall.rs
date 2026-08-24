@@ -1,3 +1,4 @@
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ptr::read_volatile;
@@ -9,24 +10,24 @@ use crate::helpers::stdio::{println, printv};
 const RTC_DR: *const u32 = 0x0901_0000 as *const u32; //seconds since epoch
 const RS_REG: u64 = 0x8400_0009;
 
-pub enum Syscall<'a> {
-    Print { message: &'a str },
-    Read { path: &'a str },
-    Write { path: &'a str, data: Vec<u8> }, // TODO: diffs? :)
-    Create { path: &'a str },
-    Delete { path: &'a str },
-    List { path: &'a str },
+pub enum Syscall {
+    Print { message: String },
+    Read { path: String },
+    Write { path: String, data: Vec<u8> }, // TODO: diffs? :)
+    Create { path: String },
+    Delete { path: String },
+    List { path: String },
     Time,
     Reboot,
 }
 
-pub struct Intent<'a> {
-    pub sc: Syscall<'a>,
+pub struct Intent {
+    pub sc: Syscall,
     pub confidence: f64,
 }
 
-impl<'a> Intent<'a> {
-    pub fn process(self) -> Result<Syscall<'a>, f64> {
+impl Intent {
+    pub fn process(self) -> Result<Syscall, f64> {
         // TODO: figure out exact feasible numbers later ig
         let th: f64 = match self.sc {
             Syscall::Print { .. } => 0.5,
@@ -46,20 +47,20 @@ impl<'a> Intent<'a> {
     }
 }
 
-pub async fn exec_syscall(sc: Syscall<'_>, fs: &Ext4) -> Result<(), Ext4Error> {
+pub async fn exec_syscall(sc: Syscall, fs: &Ext4) -> Result<(), Ext4Error> {
     match sc {
         Syscall::Print { message } => {
-            println(message);
+            println(&message);
             Ok(())
         }
         Syscall::Read { path } => {
-            printv(&fs.read(path).await?);
+            printv(&fs.read(&path).await?);
             Ok(())
         }
-        Syscall::Write { path, data } => write(fs, path, &data).await,
-        Syscall::Create { path } => touch(fs, path).await,
-        Syscall::Delete { path } => delete(fs, path).await,
-        Syscall::List { path } => listdir(fs, path).await,
+        Syscall::Write { path, data } => write(fs, &path, &data).await,
+        Syscall::Create { path } => touch(fs, &path).await,
+        Syscall::Delete { path } => delete(fs, &path).await,
+        Syscall::List { path } => listdir(fs, &path).await,
         Syscall::Time => {
             get_curr_time();
             Ok(())
