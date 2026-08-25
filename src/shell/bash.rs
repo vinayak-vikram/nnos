@@ -15,7 +15,7 @@ impl ShellProfile for BashProfile {
         let s = core::str::from_utf8(&cmd.buf[..cmd.len]).ok()?;
         Some(Intent {
             sc: Syscall::Print {
-                message: format!("got: {}", s),
+                message: format!("\r\ngot: {}", s),
             },
             confidence: 1.0,
         })

@@ -7,7 +7,7 @@ pub struct NNProfile;
 
 impl ShellProfile for NNProfile {
     async fn init(&mut self, _fs: &Ext4) -> Result<(), ()> {
-        todo!()
+        Err(())
     }
 
     async fn infer(&self, _cmd: CommandBuffer, _fs: &Ext4) -> Option<Intent> {
