@@ -53,49 +53,94 @@ fn safe_ln(p: f32) -> f32 {
     logf(p.max(1e-30))
 }
 
+/// Greedy decode as a state machine, so a caller running on an executor can yield
+/// between tokens instead of blocking for the whole generation. This is also the seam
+/// an accelerator await drops into later.
+pub struct Greedy<'m, 's> {
+    model: &'m Model,
+    sess: &'s mut Session,
+    ext: Cache,
+    probs: Vec<f32>,
+    out: Vec<u8>,
+    sum_lp: f32,
+    min_p: f32,
+    plen: usize,
+    max_tokens: usize,
+}
+
+impl<'m, 's> Greedy<'m, 's> {
+    pub fn start(
+        model: &'m Model,
+        sess: &'s mut Session,
+        prompt: &[u8],
+        max_tokens: usize,
+    ) -> Result<Greedy<'m, 's>, GenError> {
+        if max_tokens == 0 || prompt.len() + max_tokens > model.cfg.ctx {
+            return Err(GenError::NoRoomToGenerate);
+        }
+        model.prefill(sess, prompt)?;
+
+        let plen = sess.prompt_len;
+        Ok(Greedy {
+            ext: Cache::new(&model.cfg, max_tokens),
+            probs: vec![0.0; model.cfg.vocab],
+            out: Vec::with_capacity(max_tokens),
+            sum_lp: 0.0,
+            min_p: 1.0,
+            plen,
+            max_tokens,
+            model,
+            sess,
+        })
+    }
+
+    /// one token. Some(..) once EOS lands or the cap is hit.
+    pub fn step(&mut self) -> Option<Candidate> {
+        probs_into(&mut self.probs, &self.sess.scratch.logits, self.model.temp);
+        let tok = argmax(&self.probs);
+        let p = self.probs[tok];
+
+        self.sum_lp += safe_ln(p);
+        self.min_p = self.min_p.min(p);
+        self.out.push(tok as u8);
+
+        if tok as u8 == EOS || self.out.len() >= self.max_tokens {
+            return Some(Candidate::new(
+                core::mem::take(&mut self.out),
+                self.sum_lp,
+                self.min_p,
+            ));
+        }
+
+        let pos = self.plen + self.out.len() - 1;
+        self.model.forward(
+            &mut self.sess.scratch,
+            &mut self.sess.prefill,
+            Some(&mut self.ext),
+            self.plen,
+            pos,
+            tok as u8,
+        );
+        None
+    }
+
+    pub fn generated(&self) -> &[u8] {
+        &self.out
+    }
+}
+
 pub fn greedy(
     model: &Model,
     sess: &mut Session,
     prompt: &[u8],
     max_tokens: usize,
 ) -> Result<Candidate, GenError> {
-    if max_tokens == 0 || prompt.len() + max_tokens > model.cfg.ctx {
-        return Err(GenError::NoRoomToGenerate);
-    }
-    model.prefill(sess, prompt)?;
-
-    let plen = sess.prompt_len;
-    let mut ext = Cache::new(&model.cfg, max_tokens);
-    let mut probs = vec![0.0f32; model.cfg.vocab];
-    let mut out = Vec::with_capacity(max_tokens);
-    let mut sum_lp = 0.0f32;
-    let mut min_p = 1.0f32;
-
+    let mut g = Greedy::start(model, sess, prompt, max_tokens)?;
     loop {
-        probs_into(&mut probs, &sess.scratch.logits, model.temp);
-        let tok = argmax(&probs);
-        let p = probs[tok];
-
-        sum_lp += safe_ln(p);
-        min_p = min_p.min(p);
-        out.push(tok as u8);
-
-        if tok as u8 == EOS || out.len() >= max_tokens {
-            break;
+        if let Some(c) = g.step() {
+            return Ok(c);
         }
-
-        let pos = plen + out.len() - 1;
-        model.forward(
-            &mut sess.scratch,
-            &mut sess.prefill,
-            Some(&mut ext),
-            plen,
-            pos,
-            tok as u8,
-        );
     }
-
-    Ok(Candidate::new(out, sum_lp, min_p))
 }
 
 struct Beam {
