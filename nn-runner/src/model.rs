@@ -86,6 +86,11 @@ impl Cache {
         let o = self.at(layer, pos);
         &self.v[o..o + self.d]
     }
+
+    pub fn copy_from(&mut self, other: &Cache) {
+        self.k.copy_from_slice(&other.k);
+        self.v.copy_from_slice(&other.v);
+    }
 }
 
 pub struct Scratch {
@@ -344,6 +349,8 @@ impl Model {
             return Err(GenError::PromptTooLong);
         }
 
+        // no need to zero the cache between commands: prefill rewrites positions
+        // 0..prompt_len and attention only ever reads j <= pos, so nothing stale is live
         sess.prompt_len = prompt.len();
         for (i, &t) in prompt.iter().enumerate() {
             self.forward(
