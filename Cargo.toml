@@ -3,6 +3,9 @@ name = "nnos"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["nn-runner"]
+
 [dependencies]
 panic-halt = "1.0.0"
 critical-section = { version = "1.2.0", features = ["restore-state-u64"] }

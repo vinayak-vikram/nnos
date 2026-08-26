@@ -198,6 +198,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nn-runner"
+version = "0.1.0"
+
+[[package]]
 name = "nnos"
 version = "0.1.0"
 dependencies = [
