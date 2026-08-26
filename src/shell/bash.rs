@@ -11,7 +11,7 @@ impl ShellProfile for BashProfile {
         Ok(())
     }
 
-    async fn infer(&self, cmd: CommandBuffer, _fs: &Ext4) -> Option<Intent> {
+    async fn infer(&mut self, cmd: CommandBuffer, _fs: &Ext4) -> Option<Intent> {
         let s = core::str::from_utf8(&cmd.buf[..cmd.len]).ok()?;
         Some(Intent {
             sc: Syscall::Print {

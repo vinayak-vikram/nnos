@@ -25,7 +25,7 @@ pub async fn init_task(dtb_ptr: *const u8) {
     };
     println("successfully loaoded ext4 filesystem");
     println("https://github.com/vinayak-vikram/nnos 0.0.1 kernel initialization complete\r\n");
-    let mut nn = NNProfile;
+    let mut nn = NNProfile::new();
     if nn.init(&fs).await.is_ok() {
         spawn(shell_task(nn, fs));
     } else {

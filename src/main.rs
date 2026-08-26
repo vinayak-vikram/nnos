@@ -25,7 +25,7 @@ static HEAP: Heap = Heap::empty();
 #[unsafe(no_mangle)]
 pub extern "C" fn main(dtb_ptr: *const u8) -> ! {
     unsafe {
-        embedded_alloc::init!(HEAP, 1024 * 1024);
+        embedded_alloc::init!(HEAP, 1024 * 1024 * 48); // 48mb
     }
     CONSOLE.enable_rx_irq();
     unsafe {

@@ -15,7 +15,7 @@ pub struct CommandBuffer {
     pub len: usize,
 }
 
-pub async fn shell_task(profile: impl ShellProfile, fs: Ext4) {
+pub async fn shell_task(mut profile: impl ShellProfile, fs: Ext4) {
     loop {
         print("> ");
         let cmd = readln().await;
@@ -36,5 +36,5 @@ pub async fn shell_task(profile: impl ShellProfile, fs: Ext4) {
 
 pub trait ShellProfile {
     async fn init(&mut self, fs: &Ext4) -> Result<(), ()>;
-    async fn infer(&self, cmd: CommandBuffer, fs: &Ext4) -> Option<Intent>;
+    async fn infer(&mut self, cmd: CommandBuffer, fs: &Ext4) -> Option<Intent>;
 }

@@ -1,7 +1,7 @@
 MEMORY
 {
   /* kernel image is loaded at loader_start + 0x80000 */
-  RAM : ORIGIN = 0x40080000, LENGTH = 256M - 512K
+  RAM : ORIGIN = 0x40080000, LENGTH = 512M - 512K
 }
 
 ENTRY(_start);

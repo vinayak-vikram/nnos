@@ -220,6 +220,7 @@ dependencies = [
  "ext4plus",
  "fdt",
  "futures",
+ "nn-runner",
  "panic-halt",
 ]
 

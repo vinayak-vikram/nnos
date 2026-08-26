@@ -14,6 +14,7 @@ futures = { version = "0.3.34", default-features = false, features = ["alloc"] }
 fdt = "0.1.5"
 ext4plus = { version = "0.1.0-rc.2", default-features = false }
 async-trait = "0.1"
+nn-runner = { path = "nn-runner" }
 
 [profile.dev]
 panic = "abort"
