@@ -12,6 +12,7 @@ struct Header {
     // maybe extra stuff later ig
 }
 
+#[derive(Debug)]
 enum LoadError {
     TooShort,
     BadMagic,
@@ -23,6 +24,88 @@ enum LoadError {
     Vocab,
     DModelNHeads,
     NTensors,
+    RecordOutOfBounds,
+    BadDtype,
+    BadNDims,
+    BadDims,
+    BadScaleCount,
+    BadAlignment,
+    DataOutOfBounds,
+    ScalesOutOfBounds,
+}
+
+struct TensorRecord {
+    dtype: u8,
+    n_dims: u8,
+    dim0: u32,
+    dim1: u32,
+    scale_count: u32,
+    data_offset: u64,
+    scales_offset: u64,
+}
+
+impl TensorRecord {
+    fn load(buf: &[u8], offset: usize) -> Result<TensorRecord, LoadError> {
+        if offset + 32 > buf.len() {
+            return Err(LoadError::RecordOutOfBounds);
+        }
+
+        let dtype = buf[offset];
+        if dtype > 1 {
+            return Err(LoadError::BadDtype);
+        }
+
+        let n_dims = buf[offset + 1];
+        if n_dims != 1 && n_dims != 2 {
+            return Err(LoadError::BadNDims);
+        }
+
+        let dim0 = u32::from_le_bytes(buf[offset + 4..offset + 8].try_into().unwrap());
+        let dim1 = u32::from_le_bytes(buf[offset + 8..offset + 12].try_into().unwrap());
+        let scale_count = u32::from_le_bytes(buf[offset + 12..offset + 16].try_into().unwrap());
+        let data_offset = u64::from_le_bytes(buf[offset + 16..offset + 24].try_into().unwrap());
+        let scales_offset = u64::from_le_bytes(buf[offset + 24..offset + 32].try_into().unwrap());
+
+        if dim0 == 0 || (n_dims == 1 && dim1 != 0) || (n_dims == 2 && dim1 == 0) {
+            return Err(LoadError::BadDims);
+        }
+        if scale_count != 0 && scale_count != dim0 {
+            return Err(LoadError::BadScaleCount);
+        }
+        if data_offset % 64 != 0 {
+            return Err(LoadError::BadAlignment);
+        }
+
+        // dim1 == 0 means 1-D, so treat it as a single column for the size math
+        let element_size: u64 = if dtype == 0 { 1 } else { 4 };
+        let cols = if dim1 == 0 { 1 } else { dim1 } as u64;
+        let data_len = dim0 as u64 * cols * element_size;
+        let data_end = data_offset
+            .checked_add(data_len)
+            .ok_or(LoadError::DataOutOfBounds)?;
+        if data_end > buf.len() as u64 {
+            return Err(LoadError::DataOutOfBounds);
+        }
+
+        if scale_count > 0 {
+            let scales_end = scales_offset
+                .checked_add(scale_count as u64 * 4)
+                .ok_or(LoadError::ScalesOutOfBounds)?;
+            if scales_end > buf.len() as u64 {
+                return Err(LoadError::ScalesOutOfBounds);
+            }
+        }
+
+        Ok(TensorRecord {
+            dtype,
+            n_dims,
+            dim0,
+            dim1,
+            scale_count,
+            data_offset,
+            scales_offset,
+        })
+    }
 }
 
 impl Header {
@@ -127,5 +210,27 @@ mod tests {
         assert_eq!(header.d_model, 320);
         assert_eq!(header.n_heads, 10);
         assert_eq!(header.n_tensors, 83);
+    }
+
+    #[test]
+    fn check_tensor_records() {
+        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../nn/nn/sh.bin"))
+            .expect("file not found");
+
+        // record 0: tok_emb [256, 320] i8, per-row scales
+        let tok_emb = TensorRecord::load(&f, 64).expect("tok_emb record");
+        assert_eq!(tok_emb.dtype, 0);
+        assert_eq!(tok_emb.n_dims, 2);
+        assert_eq!(tok_emb.dim0, 256);
+        assert_eq!(tok_emb.dim1, 320);
+        assert_eq!(tok_emb.scale_count, 256);
+
+        // record 1: pos_emb [512, 320] f32, no scales
+        let pos_emb = TensorRecord::load(&f, 64 + 32).expect("pos_emb record");
+        assert_eq!(pos_emb.dtype, 1);
+        assert_eq!(pos_emb.n_dims, 2);
+        assert_eq!(pos_emb.dim0, 512);
+        assert_eq!(pos_emb.dim1, 320);
+        assert_eq!(pos_emb.scale_count, 0);
     }
 }
