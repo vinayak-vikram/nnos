@@ -27,6 +27,25 @@ pub enum Intent {
     None,
 }
 
+impl Intent {
+    /// Confidence a candidate must clear before the syscall runs. Starting points from
+    /// the guide; retune against the file count you actually demo with, since a bigger
+    /// listing spreads probability mass over more copy candidates.
+    pub fn threshold(&self) -> f32 {
+        match self {
+            Intent::Print(_) => 0.50,
+            Intent::Time => 0.50,
+            Intent::Read(_) => 0.60,
+            Intent::List => 0.60,
+            Intent::Create(_) => 0.80,
+            Intent::Write(_, _) => 0.85,
+            Intent::Delete(_) => 0.95,
+            Intent::Reboot => 0.97,
+            Intent::None => 1.01, // never actionable
+        }
+    }
+}
+
 /// Keep whole names in directory order until the budget is spent. The budget shrinks
 /// with the command length so a long line cannot push the sequence past ctx.
 pub fn truncate_listing<'a>(names: &[&'a str], line_len: usize, ctx: usize) -> Vec<&'a str> {
@@ -69,8 +88,10 @@ fn ok_text(s: &str) -> bool {
     !s.contains('"') && !s.contains('\\')
 }
 
+/// Parsing stays dumb on purpose. "/" is a real trained output (the whole-disk delete),
+/// so the grammar accepts it and the threshold plus the fs layer decide what it means.
 fn ok_path(s: &str) -> bool {
-    s.starts_with('/') && s.len() > 1 && ok_text(s)
+    s.starts_with('/') && ok_text(s)
 }
 
 /// Deliberately dumb: match the verb up to `("`, then scan for `", "` and `")`.
@@ -158,7 +179,6 @@ mod tests {
         assert_eq!(parse(b"DELET(\"/a\")"), None);
         assert_eq!(parse(b"DELETE(\"/a\""), None);
         assert_eq!(parse(b"DELETE(\"a.txt\")"), None); // no leading slash
-        assert_eq!(parse(b"DELETE(\"/\")"), None); // root is not a file
         assert_eq!(parse(b"LIST(\"/sub\")"), None); // root-only
         assert_eq!(parse(b"WRITE(\"/a\")"), None); // missing text arg
     }
