@@ -1,21 +1,28 @@
 use alloc::vec::Vec;
 
-struct Header {
-    magic: [u8; 4],
-    version: u32,
-    d_model: u32,
-    n_layers: u32,
-    n_heads: u32,
-    ctx_len: u32,
-    vocab: u32,
-    temp: f32,
-    n_tensors: u32,
-    crc32: u32,
+pub const HEADER: usize = 64;
+pub const DIR_ENTRY: usize = 32;
+pub const ALIGN: u64 = 64;
+pub const I8: u8 = 0;
+pub const F32: u8 = 1;
+
+#[derive(Debug)]
+pub struct Header {
+    pub magic: [u8; 4],
+    pub version: u32,
+    pub d_model: u32,
+    pub n_layers: u32,
+    pub n_heads: u32,
+    pub ctx_len: u32,
+    pub vocab: u32,
+    pub temp: f32,
+    pub n_tensors: u32,
+    pub crc32: u32,
     // maybe extra stuff later ig
 }
 
-#[derive(Debug)]
-enum LoadError {
+#[derive(Debug, PartialEq, Eq)]
+pub enum LoadError {
     TooShort,
     BadMagic,
     BadVersion,
@@ -36,43 +43,46 @@ enum LoadError {
     ScalesOutOfBounds,
     BadTensorShape,
     BadTotalLength,
+    BadCrc,
+    BadScaleValue,
 }
 
-struct TensorRecord {
-    dtype: u8,
-    n_dims: u8,
-    dim0: u32,
-    dim1: u32,
-    scale_count: u32,
-    data_offset: u64,
-    scales_offset: u64,
+#[derive(Debug)]
+pub struct TensorRecord {
+    pub dtype: u8,
+    pub n_dims: u8,
+    pub dim0: u32,
+    pub dim1: u32,
+    pub scale_count: u32,
+    pub data_offset: u64,
+    pub scales_offset: u64,
 }
 
 impl TensorRecord {
     // dim1 == 0 means 1-D, so treat it as a single column for the size math
-    fn cols(&self) -> u64 {
+    pub fn cols(&self) -> u64 {
         if self.dim1 == 0 { 1 } else { self.dim1 as u64 }
     }
 
-    fn element_size(&self) -> u64 {
-        if self.dtype == 0 { 1 } else { 4 }
+    pub fn element_size(&self) -> u64 {
+        if self.dtype == I8 { 1 } else { 4 }
     }
 
-    fn data_len(&self) -> u64 {
+    pub fn data_len(&self) -> u64 {
         self.dim0 as u64 * self.cols() * self.element_size()
     }
 
-    fn scales_len(&self) -> u64 {
+    pub fn scales_len(&self) -> u64 {
         self.scale_count as u64 * 4
     }
 
-    fn load(buf: &[u8], offset: usize) -> Result<TensorRecord, LoadError> {
-        if offset + 32 > buf.len() {
+    fn load(buf: &[u8], offset: usize, dir_end: u64) -> Result<TensorRecord, LoadError> {
+        if offset + DIR_ENTRY > buf.len() {
             return Err(LoadError::RecordOutOfBounds);
         }
 
         let dtype = buf[offset];
-        if dtype > 1 {
+        if dtype != I8 && dtype != F32 {
             return Err(LoadError::BadDtype);
         }
 
@@ -93,7 +103,7 @@ impl TensorRecord {
         if scale_count != 0 && scale_count != dim0 {
             return Err(LoadError::BadScaleCount);
         }
-        if data_offset % 64 != 0 {
+        if data_offset % ALIGN != 0 {
             return Err(LoadError::BadAlignment);
         }
 
@@ -110,7 +120,7 @@ impl TensorRecord {
         let data_end = data_offset
             .checked_add(record.data_len())
             .ok_or(LoadError::DataOutOfBounds)?;
-        if data_end > buf.len() as u64 {
+        if data_offset < dir_end || data_end > buf.len() as u64 {
             return Err(LoadError::DataOutOfBounds);
         }
 
@@ -118,7 +128,7 @@ impl TensorRecord {
             let scales_end = scales_offset
                 .checked_add(record.scales_len())
                 .ok_or(LoadError::ScalesOutOfBounds)?;
-            if scales_end > buf.len() as u64 {
+            if scales_offset < dir_end || scales_end > buf.len() as u64 {
                 return Err(LoadError::ScalesOutOfBounds);
             }
         }
@@ -133,26 +143,26 @@ fn expected_shape(pos: usize, header: &Header) -> (u8, u8, u32, u32, u32) {
     let d = header.d_model;
 
     if pos == 0 {
-        return (0, 2, 256, d, 256);
+        return (I8, 2, 256, d, 256);
     }
     if pos == 1 {
-        return (1, 2, header.ctx_len, d, 0);
+        return (F32, 2, header.ctx_len, d, 0);
     }
 
     let last = 2 + header.n_layers as usize * 8;
     if pos == last {
-        return (1, 1, d, 0, 0);
+        return (F32, 1, d, 0, 0);
     }
 
     match (pos - 2) % 8 {
-        0 => (1, 1, d, 0, 0),         // ln1.g
-        1 => (0, 2, d, d, d),         // wq
-        2 => (0, 2, d, d, d),         // wk
-        3 => (0, 2, d, d, d),         // wv
-        4 => (0, 2, d, d, d),         // wo
-        5 => (1, 1, d, 0, 0),         // ln2.g
-        6 => (0, 2, 4 * d, d, 4 * d), // w_up
-        _ => (0, 2, d, 4 * d, d),     // w_down (slot 7)
+        0 => (F32, 1, d, 0, 0),        // ln1.g
+        1 => (I8, 2, d, d, d),         // wq
+        2 => (I8, 2, d, d, d),         // wk
+        3 => (I8, 2, d, d, d),         // wv
+        4 => (I8, 2, d, d, d),         // wo
+        5 => (F32, 1, d, 0, 0),        // ln2.g
+        6 => (I8, 2, 4 * d, d, 4 * d), // w_up
+        _ => (I8, 2, d, 4 * d, d),     // w_down
     }
 }
 
@@ -171,10 +181,15 @@ fn validate_tensor_order(records: &[TensorRecord], header: &Header) -> Result<()
     Ok(())
 }
 
-fn parse_directory(buf: &[u8], header: &Header) -> Result<Vec<TensorRecord>, LoadError> {
+pub fn parse_directory(buf: &[u8], header: &Header) -> Result<Vec<TensorRecord>, LoadError> {
+    let dir_end = (HEADER + DIR_ENTRY * header.n_tensors as usize) as u64;
+    if (buf.len() as u64) < dir_end {
+        return Err(LoadError::TooShort);
+    }
+
     let mut records = Vec::with_capacity(header.n_tensors as usize);
     for i in 0..header.n_tensors as usize {
-        records.push(TensorRecord::load(buf, 64 + i * 32)?);
+        records.push(TensorRecord::load(buf, HEADER + i * DIR_ENTRY, dir_end)?);
     }
 
     validate_tensor_order(&records, header)?;
@@ -195,9 +210,34 @@ fn parse_directory(buf: &[u8], header: &Header) -> Result<Vec<TensorRecord>, Loa
     Ok(records)
 }
 
+const CRC_TABLE: [u32; 256] = {
+    let mut table = [0u32; 256];
+    let mut i = 0;
+    while i < 256 {
+        let mut c = i as u32;
+        let mut k = 0;
+        while k < 8 {
+            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            k += 1;
+        }
+        table[i] = c;
+        i += 1;
+    }
+    table
+};
+
+/// zlib crc32 over everything past the header. libm only, so no crate for this.
+pub fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in data {
+        crc = CRC_TABLE[((crc ^ b as u32) & 0xFF) as usize] ^ (crc >> 8);
+    }
+    !crc
+}
+
 impl Header {
-    fn load(buf: &[u8]) -> Result<Header, LoadError> {
-        if buf.len() < 64 {
+    pub fn load(buf: &[u8]) -> Result<Header, LoadError> {
+        if buf.len() < HEADER {
             return Err(LoadError::TooShort);
         }
 
@@ -218,12 +258,12 @@ impl Header {
         let vocab = u32::from_le_bytes(buf[24..28].try_into().unwrap());
         let temp = f32::from_le_bytes(buf[28..32].try_into().unwrap());
         let n_tensors = u32::from_le_bytes(buf[32..36].try_into().unwrap());
-        let crc32 = u32::from_le_bytes(buf[36..40].try_into().unwrap());
+        let crc = u32::from_le_bytes(buf[36..40].try_into().unwrap());
 
         if d_model == 0 || d_model > 1024 {
             return Err(LoadError::DModel);
         }
-        if n_layers > 16 {
+        if n_layers == 0 || n_layers > 16 {
             return Err(LoadError::NLayers);
         }
         if ctx_len == 0 || ctx_len > 2048 {
@@ -241,7 +281,9 @@ impl Header {
         if n_tensors != 3 + 8 * n_layers {
             return Err(LoadError::NTensors);
         }
-        // TODO: check crc ig, need crate...
+        if crc != 0 && crc32(&buf[HEADER..]) != crc {
+            return Err(LoadError::BadCrc);
+        }
 
         Ok(Header {
             magic,
@@ -253,7 +295,7 @@ impl Header {
             vocab,
             temp,
             n_tensors,
-            crc32,
+            crc32: crc,
         })
     }
 }
@@ -261,6 +303,10 @@ impl Header {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub fn sh_bin() -> Vec<u8> {
+        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../nn/nn/sh.bin")).expect("sh.bin")
+    }
 
     fn gen_valid_header_bytes() -> [u8; 64] {
         let mut buf = [0u8; 64];
@@ -273,7 +319,7 @@ mod tests {
         buf[24..28].copy_from_slice(&u32::to_le_bytes(256));
         buf[28..32].copy_from_slice(&f32::to_le_bytes(1.4));
         buf[32..36].copy_from_slice(&u32::to_le_bytes(83));
-        // TODO: crc, its 0 for now
+        // crc stays 0, which means unchecked
         buf
     }
 
@@ -289,51 +335,142 @@ mod tests {
 
     #[test]
     fn check_file() {
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../nn/nn/sh.bin"))
-            .expect("file not found");
+        let f = sh_bin();
         let Ok(header) = Header::load(&f) else {
             panic!("header load failed, ") // give debug if this torques itsefl ig
         };
         assert_eq!(header.d_model, 320);
         assert_eq!(header.n_heads, 10);
         assert_eq!(header.n_tensors, 83);
+        assert_eq!(header.ctx_len, 512);
+        assert!((header.temp - 1.4).abs() < 1e-6);
+        assert_ne!(header.crc32, 0);
     }
 
     #[test]
     fn check_tensor_records() {
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../nn/nn/sh.bin"))
-            .expect("file not found");
+        let f = sh_bin();
+        let header = Header::load(&f).unwrap();
+        let recs = parse_directory(&f, &header).unwrap();
 
         // record 0: tok_emb [256, 320] i8, per-row scales
-        let tok_emb = TensorRecord::load(&f, 64).expect("tok_emb record");
-        assert_eq!(tok_emb.dtype, 0);
-        assert_eq!(tok_emb.n_dims, 2);
-        assert_eq!(tok_emb.dim0, 256);
-        assert_eq!(tok_emb.dim1, 320);
-        assert_eq!(tok_emb.scale_count, 256);
+        assert_eq!(recs[0].dtype, I8);
+        assert_eq!(recs[0].dim0, 256);
+        assert_eq!(recs[0].dim1, 320);
+        assert_eq!(recs[0].scale_count, 256);
 
         // record 1: pos_emb [512, 320] f32, no scales
-        let pos_emb = TensorRecord::load(&f, 64 + 32).expect("pos_emb record");
-        assert_eq!(pos_emb.dtype, 1);
-        assert_eq!(pos_emb.n_dims, 2);
-        assert_eq!(pos_emb.dim0, 512);
-        assert_eq!(pos_emb.dim1, 320);
-        assert_eq!(pos_emb.scale_count, 0);
+        assert_eq!(recs[1].dtype, F32);
+        assert_eq!(recs[1].dim0, 512);
+        assert_eq!(recs[1].dim1, 320);
+        assert_eq!(recs[1].scale_count, 0);
     }
 
     #[test]
     fn check_full_directory() {
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../nn/nn/sh.bin"))
-            .expect("file not found");
-        let header = Header::load(&f).expect("header");
-        let records = parse_directory(&f, &header).expect("directory");
+        let f = sh_bin();
+        let header = Header::load(&f).unwrap();
+        let records = parse_directory(&f, &header).unwrap();
 
         assert_eq!(records.len(), 83);
-        // last tensor is lnf.g: [320] f32, no scales
         let lnf_g = records.last().unwrap();
-        assert_eq!(lnf_g.dtype, 1);
+        assert_eq!(lnf_g.dtype, F32);
         assert_eq!(lnf_g.n_dims, 1);
         assert_eq!(lnf_g.dim0, 320);
         assert_eq!(lnf_g.scale_count, 0);
+    }
+
+    fn patched(f: impl Fn(&mut [u8; 64])) -> LoadError {
+        let mut buf = gen_valid_header_bytes();
+        f(&mut buf);
+        Header::load(&buf).expect_err("should have been rejected")
+    }
+
+    #[test]
+    fn rejects_bad_headers() {
+        assert_eq!(Header::load(&[0u8; 40]).unwrap_err(), LoadError::TooShort);
+        assert_eq!(patched(|b| b[0] = b'X'), LoadError::BadMagic);
+        assert_eq!(
+            patched(|b| b[4..8].copy_from_slice(&2u32.to_le_bytes())),
+            LoadError::BadVersion
+        );
+        assert_eq!(
+            patched(|b| b[8..12].copy_from_slice(&2000u32.to_le_bytes())),
+            LoadError::DModel
+        );
+        assert_eq!(
+            patched(|b| b[12..16].copy_from_slice(&17u32.to_le_bytes())),
+            LoadError::NLayers
+        );
+        assert_eq!(
+            patched(|b| b[20..24].copy_from_slice(&4096u32.to_le_bytes())),
+            LoadError::CtxSize
+        );
+        assert_eq!(
+            patched(|b| b[28..32].copy_from_slice(&0.0f32.to_le_bytes())),
+            LoadError::Temp
+        );
+        assert_eq!(
+            patched(|b| b[24..28].copy_from_slice(&512u32.to_le_bytes())),
+            LoadError::Vocab
+        );
+        assert_eq!(
+            patched(|b| b[16..20].copy_from_slice(&7u32.to_le_bytes())),
+            LoadError::DModelNHeads
+        );
+        assert_eq!(
+            patched(|b| b[32..36].copy_from_slice(&84u32.to_le_bytes())),
+            LoadError::NTensors
+        );
+    }
+
+    #[test]
+    fn rejects_truncated_directory() {
+        let f = sh_bin();
+        let header = Header::load(&f).unwrap();
+        let short = &f[..HEADER + DIR_ENTRY * 4];
+        assert_eq!(
+            parse_directory(short, &header).unwrap_err(),
+            LoadError::TooShort
+        );
+    }
+
+    #[test]
+    fn crc_matches_real_file() {
+        let f = sh_bin();
+        let crc = u32::from_le_bytes(f[36..40].try_into().unwrap());
+        assert_eq!(crc32(&f[HEADER..]), crc);
+    }
+
+    // xorshift, because no rand crate and Math.random is not a thing here
+    fn next_rand(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    #[test]
+    fn fuzz_load() {
+        let orig = sh_bin();
+        let mut state = 0x243F_6A88_85A3_08D3u64;
+        let (mut rejected, mut accepted) = (0, 0);
+
+        for _ in 0..500 {
+            let mut b = orig.clone();
+            let n = 1 + next_rand(&mut state) % 5;
+            for _ in 0..n {
+                let at = (next_rand(&mut state) as usize) % b.len();
+                b[at] = (next_rand(&mut state) % 256) as u8;
+            }
+            match Header::load(&b).and_then(|h| parse_directory(&b, &h)) {
+                Ok(_) => accepted += 1,
+                Err(_) => rejected += 1,
+            }
+        }
+
+        // no panics is the actual assertion here; crc catches essentially everything
+        assert_eq!(rejected + accepted, 500);
+        assert!(rejected > 400, "only {rejected} of 500 rejected");
     }
 }
