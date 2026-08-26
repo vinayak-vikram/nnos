@@ -12,7 +12,7 @@ unsafe impl critical_section::Impl for AArch64CriticalSection {
             "mrs {0}, DAIF",
             "msr DAIFSet, #3",
             out(reg) original_daif,
-            options(nomem, nostack)
+            options(nostack) // nomem torques this for some reason
         );
 
         original_daif
@@ -23,7 +23,7 @@ unsafe impl critical_section::Impl for AArch64CriticalSection {
         core::arch::asm!(
             "msr DAIF, {0}",
             in(reg) restore_state,
-            options(nomem, nostack)
+            options(nostack)
         );
     }
 }
