@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 struct Header {
     magic: [u8; 4],
     version: u32,
@@ -32,6 +34,8 @@ enum LoadError {
     BadAlignment,
     DataOutOfBounds,
     ScalesOutOfBounds,
+    BadTensorShape,
+    BadTotalLength,
 }
 
 struct TensorRecord {
@@ -45,6 +49,23 @@ struct TensorRecord {
 }
 
 impl TensorRecord {
+    // dim1 == 0 means 1-D, so treat it as a single column for the size math
+    fn cols(&self) -> u64 {
+        if self.dim1 == 0 { 1 } else { self.dim1 as u64 }
+    }
+
+    fn element_size(&self) -> u64 {
+        if self.dtype == 0 { 1 } else { 4 }
+    }
+
+    fn data_len(&self) -> u64 {
+        self.dim0 as u64 * self.cols() * self.element_size()
+    }
+
+    fn scales_len(&self) -> u64 {
+        self.scale_count as u64 * 4
+    }
+
     fn load(buf: &[u8], offset: usize) -> Result<TensorRecord, LoadError> {
         if offset + 32 > buf.len() {
             return Err(LoadError::RecordOutOfBounds);
@@ -76,27 +97,7 @@ impl TensorRecord {
             return Err(LoadError::BadAlignment);
         }
 
-        // dim1 == 0 means 1-D, so treat it as a single column for the size math
-        let element_size: u64 = if dtype == 0 { 1 } else { 4 };
-        let cols = if dim1 == 0 { 1 } else { dim1 } as u64;
-        let data_len = dim0 as u64 * cols * element_size;
-        let data_end = data_offset
-            .checked_add(data_len)
-            .ok_or(LoadError::DataOutOfBounds)?;
-        if data_end > buf.len() as u64 {
-            return Err(LoadError::DataOutOfBounds);
-        }
-
-        if scale_count > 0 {
-            let scales_end = scales_offset
-                .checked_add(scale_count as u64 * 4)
-                .ok_or(LoadError::ScalesOutOfBounds)?;
-            if scales_end > buf.len() as u64 {
-                return Err(LoadError::ScalesOutOfBounds);
-            }
-        }
-
-        Ok(TensorRecord {
+        let record = TensorRecord {
             dtype,
             n_dims,
             dim0,
@@ -104,8 +105,94 @@ impl TensorRecord {
             scale_count,
             data_offset,
             scales_offset,
-        })
+        };
+
+        let data_end = data_offset
+            .checked_add(record.data_len())
+            .ok_or(LoadError::DataOutOfBounds)?;
+        if data_end > buf.len() as u64 {
+            return Err(LoadError::DataOutOfBounds);
+        }
+
+        if scale_count > 0 {
+            let scales_end = scales_offset
+                .checked_add(record.scales_len())
+                .ok_or(LoadError::ScalesOutOfBounds)?;
+            if scales_end > buf.len() as u64 {
+                return Err(LoadError::ScalesOutOfBounds);
+            }
+        }
+
+        Ok(record)
     }
+}
+
+// expected (dtype, n_dims, dim0, dim1, scale_count) for tensor directory position `pos`,
+// per the frozen order: tok_emb, pos_emb, then 8 tensors per layer, then lnf.g
+fn expected_shape(pos: usize, header: &Header) -> (u8, u8, u32, u32, u32) {
+    let d = header.d_model;
+
+    if pos == 0 {
+        return (0, 2, 256, d, 256);
+    }
+    if pos == 1 {
+        return (1, 2, header.ctx_len, d, 0);
+    }
+
+    let last = 2 + header.n_layers as usize * 8;
+    if pos == last {
+        return (1, 1, d, 0, 0);
+    }
+
+    match (pos - 2) % 8 {
+        0 => (1, 1, d, 0, 0),         // ln1.g
+        1 => (0, 2, d, d, d),         // wq
+        2 => (0, 2, d, d, d),         // wk
+        3 => (0, 2, d, d, d),         // wv
+        4 => (0, 2, d, d, d),         // wo
+        5 => (1, 1, d, 0, 0),         // ln2.g
+        6 => (0, 2, 4 * d, d, 4 * d), // w_up
+        _ => (0, 2, d, 4 * d, d),     // w_down (slot 7)
+    }
+}
+
+fn validate_tensor_order(records: &[TensorRecord], header: &Header) -> Result<(), LoadError> {
+    for (pos, rec) in records.iter().enumerate() {
+        let (dtype, n_dims, dim0, dim1, scale_count) = expected_shape(pos, header);
+        if rec.dtype != dtype
+            || rec.n_dims != n_dims
+            || rec.dim0 != dim0
+            || rec.dim1 != dim1
+            || rec.scale_count != scale_count
+        {
+            return Err(LoadError::BadTensorShape);
+        }
+    }
+    Ok(())
+}
+
+fn parse_directory(buf: &[u8], header: &Header) -> Result<Vec<TensorRecord>, LoadError> {
+    let mut records = Vec::with_capacity(header.n_tensors as usize);
+    for i in 0..header.n_tensors as usize {
+        records.push(TensorRecord::load(buf, 64 + i * 32)?);
+    }
+
+    validate_tensor_order(&records, header)?;
+
+    // every byte after the directory must belong to some tensor's data or scales,
+    // and nothing may hang off the end unaccounted for
+    let mut max_extent: u64 = 0;
+    for rec in &records {
+        max_extent = max_extent.max(rec.data_offset + rec.data_len());
+        if rec.scale_count > 0 {
+            max_extent = max_extent.max(rec.scales_offset + rec.scales_len());
+        }
+    }
+    if max_extent != buf.len() as u64 {
+        return Err(LoadError::BadTotalLength);
+    }
+
+    Ok(records)
 }
 
 impl Header {
@@ -232,5 +319,21 @@ mod tests {
         assert_eq!(pos_emb.dim0, 512);
         assert_eq!(pos_emb.dim1, 320);
         assert_eq!(pos_emb.scale_count, 0);
+    }
+
+    #[test]
+    fn check_full_directory() {
+        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../nn/nn/sh.bin"))
+            .expect("file not found");
+        let header = Header::load(&f).expect("header");
+        let records = parse_directory(&f, &header).expect("directory");
+
+        assert_eq!(records.len(), 83);
+        // last tensor is lnf.g: [320] f32, no scales
+        let lnf_g = records.last().unwrap();
+        assert_eq!(lnf_g.dtype, 1);
+        assert_eq!(lnf_g.n_dims, 1);
+        assert_eq!(lnf_g.dim0, 320);
+        assert_eq!(lnf_g.scale_count, 0);
     }
 }
